@@ -1,3 +1,6 @@
+; based on κeen's minimal ELF
+; https://keens.github.io/blog/2020/04/12/saishougennoelf/
+
 BITS 64
         org     0x400000
         db      0x7F, "ELF"	; e_ident

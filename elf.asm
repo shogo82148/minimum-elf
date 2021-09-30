@@ -46,7 +46,7 @@ segsize equ $ - phdr1
 
 _start:
         mov     rax, 60         ; sys_exit
-        mov     rdx, 0          ; return 0
+        mov     rdi, 0          ; return 0
         syscall
 
 filesize equ $ - $$

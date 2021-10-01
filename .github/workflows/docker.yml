@@ -1,0 +1,24 @@
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-qemu-action@v1
+      - uses: docker/setup-buildx-action@v1
+      - uses: actions/checkout@v2
+
+      - name: build
+        run: |
+          docker buildx build --pull --platform linux/amd64,linux/arm64 .
+
+      - name: Publish to GitHub Packages Container registry
+        run: |
+          printenv PASSWORD | docker login --username "$USERNAME" --password-stdin ghcr.io
+          docker buildx build --push --platform linux/amd64,linux/arm64 -t "ghcr.io/$USERNAME/minimum-elf:latest" .
+          docker logout
+        working-directory: ${{ matrix.dictionary }}/${{ matrix.distribution }}
+        env:
+          USERNAME: ${{ github.repository_owner }}
+          PASSWORD: ${{ secrets.GITHUB_TOKEN }}

@@ -2,131 +2,17 @@ use v5.32;
 use utf8;
 use strict;
 use warnings;
+use FindBin;
+use lib "$FindBin::Bin/lib";
+use Asm;
 
-{
-    package Lazy;
-
-    sub lazy(&) {
-        return Lazy->new($_[0]);
-    }
-
-    use overload
-        '""' => sub {
-            my $s = shift->{sub}->();
-            return "$s";
-        },
-        "0+" => sub { int(shift->{sub}->()) },
-        "+" => sub {
-            my ($self, $other, $reverse) = @_;
-            return $reverse ?
-                lazy { int($other) + int($self) }:
-                lazy { int($self) + int($other) };
-        },
-        "-" => sub {
-            my ($self, $other, $reverse) = @_;
-            return $reverse ?
-                lazy { int($other) - int($self) }:
-                lazy { int($self) - int($other) };
-        };
-    sub new {
-        my ($class, $sub) = @_;
-        return bless { sub => $sub }, $class;
-    }
-    sub set {
-        my ($self, $v) = @_;
-        $self->{sub} = sub { $v };
-    }
+my $arch = $ARGV[0] || 'x86_64';
+my $machine;
+if ($arch eq 'x86_64') {
+    $machine = MACHINE_X86_64;
+} elsif ($arch eq 'aarch64') {
+    $machine = MACHINE_AARCH64;
 }
-
-sub is_string {
-    # https://anond.hatelabo.jp/20080303125703
-    my $v = shift;
-    no feature "bitwise";
-    return ($v ^ $v) ne '0';
-}
-
-my $pos = 0;
-my @output = ();
-
-sub org {
-    my $addr = shift;
-    $pos = $addr;
-}
-
-sub label {
-    if (@_ == 0) {
-        return Lazy::lazy { 0 };
-    }
-    my $label = shift;
-    $label->set($pos);
-}
-
-# output byte sequence
-sub db {
-    for my $v(@_) {
-        if (is_string($v)) {
-            push @output, Lazy::lazy { $v };
-            $pos += length $v;
-        } else {
-            push @output, Lazy::lazy { pack("C", $v) };
-            $pos++;
-        }
-    }
-}
-
-# output 16 bit integers (little endian)
-sub dw {
-    for my $v(@_) {
-        push @output, Lazy::lazy { pack("S<", $v) };
-        $pos += 2;
-    }
-}
-
-# output 32 bit integers (little endian)
-sub dd {
-    for my $v(@_) {
-        push @output, Lazy::lazy { pack("L<", $v) };
-        $pos += 4;
-    }
-}
-
-# output 64 bit integers (little endian)
-sub dq {
-    for my $v(@_) {
-        push @output, Lazy::lazy { pack("Q<", $v) };
-        $pos += 8;
-    }
-}
-
-sub rax() { "rax" }
-sub rdi() { "rdi" }
-
-sub mov {
-    my ($reg, $imm) = @_;
-    if ($reg eq rax) {
-        db 0xb8;
-        dd $imm;
-    } elsif ($reg eq rdi) {
-        db 0xbf;
-        dd $imm;
-    }
-}
-
-sub asm_syscall() {
-    db 0x0f, 0x05;
-}
-
-# the flags for segments.
-use constant {
-    executable => 0x01,
-    writable   => 0x02,
-    readable   => 0x04,
-};
-
-use constant {
-    PT_LOAD => 0x01,
-    PT_PHDR => 0x06,
-};
 
 my $start = label();
 my $end = label();
@@ -155,7 +41,7 @@ db      0;              # ei_abiversion ABI Version
 db      0;              # padding
 dw      0, 0, 0;        # padding
 dw      2;              # e_type: executable
-dw      0x3e;           # e_machine: x86-64
+dw      $machine;       # e_machine
 dd      1;              # e_version
 dq      $entrypoint;    # e_entry
 dq      $phdr1-$start;  # e_phoff
@@ -199,10 +85,28 @@ label($seg_end);
 
 label($entrypoint);
 
+if ($machine == MACHINE_X86_64) {
+    eval <<MACHINE_X86_64;
+use Asm::x64_86;
+
 mov     rax, 60; # sys_exit
 mov     rdi, 0;
-asm_syscall;
+_syscall;
+MACHINE_X86_64
+    die "$@" if $@;
+};
+
+if ($machine == MACHINE_AARCH64) {
+    eval <<MACHINE_AARCH64;
+use Asm::aarch64;
+
+mov     x8, 93; # sys_exit
+mov     x0, xzr;
+svc     0;
+MACHINE_AARCH64
+    die "$@" if $@;
+};
 
 label($end);
 
-print @output;
+output();

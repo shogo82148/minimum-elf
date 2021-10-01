@@ -1,8 +1,8 @@
-FROM alpine:3.12 as builder
+FROM alpine:3.14 as builder
 
-RUN apk add --no-cache nasm
-COPY elf.asm /
-RUN /usr/bin/nasm -o /elf /elf.asm
+RUN apk add --no-cache perl
+COPY . .
+RUN /usr/bin/perl asm.pl "$(uname -m)" > /elf
 RUN chmod +x /elf
 
 FROM scratch

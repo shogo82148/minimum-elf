@@ -1,4 +1,4 @@
-FROM alpine:3.24.1 AS builder
+FROM alpine:3.24.2 AS builder
 
 RUN apk add --no-cache perl
 COPY . .
